@@ -34,11 +34,11 @@ type Table struct {
 }
 
 type Column struct {
-	Name                string
-	Type                string
-	Constraints         []string
-	ForeignKeyReference *ForeignReference
-	Length              int
+	Name                 string
+	Type                 string
+	Constraints          []string
+	ForeignKeyReferences []*ForeignReference
+	Length               int
 }
 
 func main() {
@@ -100,15 +100,16 @@ func transformGraph(schema *Schema, g *d2graph.Graph) *d2graph.Graph {
 		for _, column := range table.Columns {
 			_, _ = d2oracle.Set(g, fmt.Sprintf("%s.%s", table.Name, column.Name), nil, &column.Type)
 
-			if column.ForeignKeyReference != nil {
+			for _, foreignReference := range column.ForeignKeyReferences {
 				_, _, _ = d2oracle.Create(g, fmt.Sprintf(
 					"%s.%s -> %s.%s",
 					table.Name,
 					column.Name,
-					column.ForeignKeyReference.Table,
-					column.ForeignKeyReference.Column,
+					foreignReference.Table,
+					foreignReference.Column,
 				))
 			}
+
 		}
 	}
 
@@ -158,8 +159,9 @@ func toTable(stmt interface{}) *Table {
 
 func generateColumnProperties(columnDefinition *pg_query.ColumnDef) *Column {
 	column := &Column{
-		Name:        columnDefinition.Colname,
-		Constraints: make([]string, 0),
+		Name:                 columnDefinition.Colname,
+		Constraints:          make([]string, 0),
+		ForeignKeyReferences: make([]*ForeignReference, 0),
 	}
 
 	for _, node := range columnDefinition.TypeName.Names {
@@ -198,9 +200,11 @@ func generateColumnProperties(columnDefinition *pg_query.ColumnDef) *Column {
 			}
 
 			if nodeConstraint.Constraint.Contype == pg_query.ConstrType_CONSTR_FOREIGN {
-				column.ForeignKeyReference = &ForeignReference{
+				foreignReference := &ForeignReference{
 					Table: nodeConstraint.Constraint.Pktable.Relname,
 				}
+
+				found := false
 
 				for _, pkattr := range nodeConstraint.Constraint.PkAttrs {
 					node, ok := pkattr.Node.(*pg_query.Node_String_)
@@ -208,7 +212,17 @@ func generateColumnProperties(columnDefinition *pg_query.ColumnDef) *Column {
 						continue
 					}
 
-					column.ForeignKeyReference.Column = node.String_.Sval
+					for _, fkr := range column.ForeignKeyReferences {
+						if fkr.Table == nodeConstraint.Constraint.Pktable.Relname && fkr.Column == node.String_.Sval {
+							found = true
+						}
+					}
+
+					foreignReference.Column = node.String_.Sval
+				}
+
+				if !found {
+					column.ForeignKeyReferences = append(column.ForeignKeyReferences, foreignReference)
 				}
 			}
 

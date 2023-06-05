@@ -21,8 +21,8 @@ CREATE INDEX users_org_id_idx ON users USING btree (org_id);
 CREATE TABLE activities
 (
     id          BIGSERIAL PRIMARY KEY NOT NULL,
-    org_id      BIGINT                NOT NULL,
-    user_id     BIGINT                NOT NULL,
+    org_id      BIGINT                NOT NULL REFERENCES orgs (id),
+    user_id     BIGINT                NOT NULL REFERENCES users (id),
     external_id UUID                  NOT NULL,
     type        SMALLINT              NOT NULL
 );
