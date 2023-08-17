@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"oss.terrastruct.com/d2/d2oracle"
 	"oss.terrastruct.com/d2/d2renderers/d2svg"
 	"oss.terrastruct.com/d2/lib/textmeasure"
+	"flag"
 )
 
 type Schema struct {
@@ -41,8 +41,13 @@ type Column struct {
 	Length               int
 }
 
+var (
+	flags    = flag.NewFlagSet("api", flag.ExitOnError)
+	confFile = flags.String("schema", "", "input sql schema file")
+)
+
 func main() {
-	f, _ := ioutil.ReadFile(filepath.Join("schema.sql"))
+	f, _ := os.ReadFile(filepath.Join("schema.sql"))
 
 	schemaSql := string(f)
 
