@@ -3,6 +3,8 @@ FROM golang:1.21 as builder
 
 COPY / /sql2diagram
 WORKDIR /sql2diagram
+RUN go get -u github.com/goware/modvendor
+RUN modvendor -copy="**/*.c **/*.h **/*.proto" -v
 RUN CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.version=master -X main.commit=master -X main.date=custom" -o sql2diagram ./cmd/sql2diagram/main.go
 
 # stage 2

@@ -1,6 +1,6 @@
 module github.com/golang-cz/sql2diagram
 
-go 1.20
+go 1.21
 
 require (
 	github.com/pganalyze/pg_query_go/v4 v4.2.1
