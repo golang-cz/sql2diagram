@@ -122,15 +122,78 @@ func astTreeToSchema(tree *pg_query.ParseResult) *Schema {
 	}
 
 	for _, stmt := range tree.Stmts {
-		createStmt, ok := stmt.Stmt.Node.(*pg_query.Node_CreateStmt)
+		switch node := stmt.Stmt.Node.(type) {
+		case *pg_query.Node_CreateStmt:
+			schema.Tables = append(schema.Tables, toTable(node))
+		case *pg_query.Node_AlterTableStmt:
+			alterTableStmt(schema, node.AlterTableStmt)
+			break
+
+		}
+
+	}
+
+	return schema
+}
+
+func alterTableStmt(schema *Schema, stmt *pg_query.AlterTableStmt) error {
+	var sourceTable *Table
+
+	for _, t := range schema.Tables {
+		if t.Name == stmt.Relation.Relname {
+			sourceTable = t
+			break
+		}
+	}
+
+	if sourceTable == nil {
+		return fmt.Errorf("sourceTable could not be found in schema")
+	}
+
+	for _, cmd := range stmt.Cmds {
+		node, ok := cmd.Node.(*pg_query.Node_AlterTableCmd)
 		if !ok {
 			continue
 		}
 
-		schema.Tables = append(schema.Tables, toTable(createStmt))
+		if node.AlterTableCmd.Subtype != pg_query.AlterTableType_AT_AddConstraint {
+			continue
+		}
+
+		constraint, ok := node.AlterTableCmd.Def.Node.(*pg_query.Node_Constraint)
+		if !ok {
+			continue
+		}
+
+		if constraint.Constraint.Contype != pg_query.ConstrType_CONSTR_FOREIGN {
+			continue
+		}
+
+		foreignReference := &ForeignReference{
+			Table: constraint.Constraint.Pktable.Relname,
+		}
+
+		for _, pkattr := range constraint.Constraint.PkAttrs {
+			node, ok := pkattr.Node.(*pg_query.Node_String_)
+			if !ok {
+				continue
+			}
+
+			var column *Column
+			for _, col := range sourceTable.Columns {
+				if col.Name == node.String_.Sval {
+					column = col
+					break
+				}
+			}
+
+			foreignReference.Column = node.String_.Sval
+
+			column.ForeignKeyReferences = append(column.ForeignKeyReferences, foreignReference)
+		}
 	}
 
-	return schema
+	return nil
 }
 
 func toTable(stmt interface{}) *Table {
