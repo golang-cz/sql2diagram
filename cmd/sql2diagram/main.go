@@ -57,7 +57,10 @@ func main() {
 		return
 	}
 
-	schema := astTreeToSchema(tree)
+	schema, err := astTreeToSchema(tree)
+	if err != nil {
+		panic(err)
+	}
 
 	ctx := context.Background()
 	// Start with a new, empty graph
@@ -116,7 +119,7 @@ func transformGraph(schema *Schema, g *d2graph.Graph) *d2graph.Graph {
 	return g
 }
 
-func astTreeToSchema(tree *pg_query.ParseResult) *Schema {
+func astTreeToSchema(tree *pg_query.ParseResult) (*Schema, error) {
 	schema := &Schema{
 		Tables: make([]*Table, 0),
 	}
@@ -126,14 +129,15 @@ func astTreeToSchema(tree *pg_query.ParseResult) *Schema {
 		case *pg_query.Node_CreateStmt:
 			schema.Tables = append(schema.Tables, toTable(node))
 		case *pg_query.Node_AlterTableStmt:
-			alterTableStmt(schema, node.AlterTableStmt)
-			break
-
+			err := alterTableStmt(schema, node.AlterTableStmt)
+			if err != nil {
+				return nil, fmt.Errorf("failed to handle alter table stmt: %w", err)
+			}
 		}
 
 	}
 
-	return schema
+	return schema, nil
 }
 
 func alterTableStmt(schema *Schema, stmt *pg_query.AlterTableStmt) error {
