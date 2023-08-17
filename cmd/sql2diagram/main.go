@@ -42,12 +42,17 @@ type Column struct {
 }
 
 var (
-	flags    = flag.NewFlagSet("api", flag.ExitOnError)
-	confFile = flags.String("schema", "", "input sql schema file")
+	flags         = flag.NewFlagSet("api", flag.ExitOnError)
+	sqlSchemaFile = flags.String("schema", "", "input sql schema file")
 )
 
 func main() {
-	f, _ := os.ReadFile(filepath.Join("schema.sql"))
+	flags.Parse(os.Args[1:])
+
+	f, err := os.ReadFile(filepath.Join(*sqlSchemaFile))
+	if err != nil {
+		panic(err)
+	}
 
 	schemaSql := string(f)
 
