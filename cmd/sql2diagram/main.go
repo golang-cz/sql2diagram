@@ -95,8 +95,7 @@ func main() {
 		Pad: d2svg.DEFAULT_PADDING,
 	})
 
-	// Write to disk
-	err = os.WriteFile("out.svg", out, 07770)
+	_, err = os.Stdout.Write(out)
 	if err != nil {
 		log.Fatal(err)
 	}
