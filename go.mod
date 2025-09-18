@@ -1,9 +1,9 @@
 module github.com/golang-cz/sql2diagram
 
-go 1.21
+go 1.25.0
 
 require (
-	github.com/pganalyze/pg_query_go/v4 v4.2.1
+	github.com/pganalyze/pg_query_go/v6 v6.1.0
 	oss.terrastruct.com/d2 v0.4.2
 )
 
@@ -19,13 +19,10 @@ require (
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/protobuf v1.4.3 // indirect
-	github.com/goware/modvendor v0.5.0 // indirect
 	github.com/jung-kurt/gofpdf v1.16.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.9 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
-	github.com/mattn/go-zglob v0.0.4 // indirect
 	github.com/mazznoer/csscolorparser v0.1.3 // indirect
 	github.com/rivo/uniseg v0.4.3 // indirect
 	github.com/yuin/goldmark v1.5.3 // indirect
@@ -39,6 +36,6 @@ require (
 	golang.org/x/text v0.8.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	gonum.org/v1/plot v0.12.0 // indirect
-	google.golang.org/protobuf v1.25.0 // indirect
+	google.golang.org/protobuf v1.31.0 // indirect
 	oss.terrastruct.com/util-go v0.0.0-20230320053557-dcb5aac7d972 // indirect
 )
