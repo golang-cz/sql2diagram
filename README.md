@@ -1,17 +1,19 @@
 # sql2diagram
 
+![Database Schema](./_example/schema.svg)
+
 ## Generate diagram from sql dump
 
 ```bash
-go run . -schema schema.sql > out.svg
+go run . -schema schema.sql > schema.svg
 ```
 
 ## Example
 
 ```bash
-make run-exmaple
+make run-example
 ```
 
 ```bash
-go run . -schema ./_example/schema.sql > ./_example/out.svg
+go run . -schema ./_example/schema.sql > ./_example/schema.svg
 ```
