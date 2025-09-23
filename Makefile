@@ -1,2 +1,2 @@
 run-example:
-	go run . -schema ./_example/schema.sql > ./_example/schema.svg
+	go run ./cmd/sql2diagram -schema ./_example/schema.sql > ./_example/schema.svg
