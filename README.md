@@ -3,7 +3,7 @@
 ## Generate diagram from sql dump
 
 ```bash
-go run . -schema schema.sql > schema.svg
+go run . schema.sql > schema.svg
 ```
 
 ## Example
@@ -13,7 +13,7 @@ make run-example
 ```
 
 ```bash
-go run . -schema ./_example/schema.sql > ./_example/schema.svg
+go run . ./_example/schema.sql > ./_example/schema.svg
 ```
 
 ![Database Schema](./_example/schema.svg)

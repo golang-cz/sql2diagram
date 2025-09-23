@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
-	"path/filepath"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	pgQuery "github.com/pganalyze/pg_query_go/v6"
 	"oss.terrastruct.com/d2/d2format"
@@ -41,33 +42,43 @@ type Column struct {
 	Length               int
 }
 
-var (
-	flags             = flag.NewFlagSet("api", flag.ExitOnError)
-	sqlSchemaFilePath = flags.String("schema", "", "input sql schema file")
-)
-
 func main() {
-	if err := generateDiagram(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	var input []byte
+	var err error
+
+	switch len(os.Args) {
+	case 1:
+		// No arguments - read from stdin
+		input, err = io.ReadAll(os.Stdin)
+		if err != nil {
+			log.Fatal(fmt.Errorf("read from stdin: %w", err))
+		}
+
+	case 2:
+		// One argument - read from file
+		filePath := os.Args[1]
+		input, err = os.ReadFile(filePath)
+		if err != nil {
+			log.Fatal(fmt.Errorf("read file %s: %w", filePath, err))
+		}
+
+	default:
+		log.Fatal("Usage: sql2diagram [schema_file] > schema.svg")
+	}
+
+	if err := generateDiagram(ctx, string(input)); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func generateDiagram() error {
-	flags.Parse(os.Args[1:])
-
-	if *sqlSchemaFilePath == "" {
-		return fmt.Errorf("schema file was not provided")
-	}
-
-	sqlSchemaFile, err := os.ReadFile(filepath.Join(*sqlSchemaFilePath))
-	if err != nil {
-		return fmt.Errorf("open schema file: %w", err)
-	}
-
-	schemaSQL := strings.TrimSpace(string(sqlSchemaFile))
+func generateDiagram(ctx context.Context, input string) error {
+	schemaSQL := strings.TrimSpace(input)
 
 	if schemaSQL == "" {
-		return fmt.Errorf("schema was not provided, file is empty")
+		return fmt.Errorf("schema was not provided, input is empty")
 	}
 
 	// Parse the SQL statement using pg_query_go
@@ -80,8 +91,6 @@ func generateDiagram() error {
 	if err != nil {
 		return fmt.Errorf("ast tree to schema: %w", err)
 	}
-
-	ctx := context.Background()
 
 	// Start with a new, empty graph
 	_, graph, err := d2lib.Compile(ctx, "", nil)
