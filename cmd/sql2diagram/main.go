@@ -231,8 +231,18 @@ func alterTableStmt(schema *Schema, stmt *pgQuery.AlterTableStmt) error {
 			Table: constraint.Constraint.Pktable.Relname,
 		}
 
+		// Get the referenced column name from PkAttrs (primary key attributes)
 		for _, pkattr := range constraint.Constraint.PkAttrs {
 			node, ok := pkattr.Node.(*pgQuery.Node_String_)
+			if !ok {
+				continue
+			}
+			foreignReference.Column = node.String_.Sval
+		}
+
+		// Get the foreign key column name from FkAttrs (foreign key attributes)
+		for _, fkattr := range constraint.Constraint.FkAttrs {
+			node, ok := fkattr.Node.(*pgQuery.Node_String_)
 			if !ok {
 				continue
 			}
@@ -245,9 +255,10 @@ func alterTableStmt(schema *Schema, stmt *pgQuery.AlterTableStmt) error {
 				}
 			}
 
-			foreignReference.Column = node.String_.Sval
-
-			column.ForeignKeyReferences = append(column.ForeignKeyReferences, foreignReference)
+			// Check if column was found before trying to append to it
+			if column != nil {
+				column.ForeignKeyReferences = append(column.ForeignKeyReferences, foreignReference)
+			}
 		}
 	}
 
