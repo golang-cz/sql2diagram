@@ -151,8 +151,22 @@ func transformGraph(schema *Schema, g *d2graph.Graph) (*d2graph.Graph, error) {
 		}
 
 		for _, column := range table.Columns {
-			// Create column name with markers
-			columnName := formatColumnName(column)
+			// Use plain column name for D2 key
+			columnName := column.Name
+
+			// Set sql_table constraint for PK/FK so it renders in the rightmost cell
+			var constraint string
+			if contains(column.Constraints, "primary") {
+				constraint = "primary_key"
+			} else if len(column.ForeignKeyReferences) > 0 {
+				constraint = "foreign_key"
+			}
+			if constraint != "" {
+				if _, err = d2oracle.Set(g, fmt.Sprintf("%s.%s.constraint", table.Name, columnName), nil, &constraint); err != nil {
+					return nil, fmt.Errorf("d2 set constraint: %w", err)
+				}
+			}
+
 			// Use type as the value, add NULL if column can be null
 			columnType := column.Type
 			if column.Length > 0 {
@@ -175,7 +189,7 @@ func transformGraph(schema *Schema, g *d2graph.Graph) (*d2graph.Graph, error) {
 					if t.Name == foreignReference.Table {
 						for _, col := range t.Columns {
 							if col.Name == foreignReference.Column {
-								referencedColumnName = formatColumnName(col)
+								referencedColumnName = col.Name
 								break
 							}
 						}
@@ -411,26 +425,6 @@ func generateColumnProperties(columnDefinition *pgQuery.ColumnDef) *Column {
 	}
 
 	return column
-}
-
-// formatColumnName formats a column name with markers for display in the diagram
-func formatColumnName(column *Column) string {
-	// Build markers for the column name
-	markers := []string{}
-	if contains(column.Constraints, "primary") {
-		markers = append(markers, "PK")
-	}
-	if len(column.ForeignKeyReferences) > 0 {
-		markers = append(markers, "FK")
-	}
-
-	// Format: column_name (markers)
-	result := column.Name
-	if len(markers) > 0 {
-		result += fmt.Sprintf(" (%s)", strings.Join(markers, ", "))
-	}
-
-	return result
 }
 
 // contains checks if a slice contains a string
