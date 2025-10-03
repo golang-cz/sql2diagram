@@ -151,17 +151,47 @@ func transformGraph(schema *Schema, g *d2graph.Graph) (*d2graph.Graph, error) {
 		}
 
 		for _, column := range table.Columns {
-			if _, err = d2oracle.Set(g, fmt.Sprintf("%s.%s", table.Name, column.Name), nil, &column.Type); err != nil {
+			// Create column name with markers
+			columnName := formatColumnName(column)
+			// Use type as the value, add NULL if column can be null
+			columnType := column.Type
+			if column.Length > 0 {
+				columnType = fmt.Sprintf("%s(%d)", column.Type, column.Length)
+			}
+
+			// Add NULL if column can be null (doesn't have NOT NULL constraint)
+			if !contains(column.Constraints, "not null") {
+				columnType += " NULL"
+			}
+
+			if _, err = d2oracle.Set(g, fmt.Sprintf("%s.%s", table.Name, columnName), nil, &columnType); err != nil {
 				return nil, fmt.Errorf("d2 set: %w", err)
 			}
 
 			for _, foreignReference := range column.ForeignKeyReferences {
+				// Find the referenced column to get its formatted name
+				var referencedColumnName string
+				for _, t := range schema.Tables {
+					if t.Name == foreignReference.Table {
+						for _, col := range t.Columns {
+							if col.Name == foreignReference.Column {
+								referencedColumnName = formatColumnName(col)
+								break
+							}
+						}
+						break
+					}
+				}
+				if referencedColumnName == "" {
+					referencedColumnName = foreignReference.Column
+				}
+
 				tableReferences := fmt.Sprintf(
 					"%s.%s -> %s.%s",
 					table.Name,
-					column.Name,
+					columnName,
 					foreignReference.Table,
-					foreignReference.Column,
+					referencedColumnName,
 				)
 				if _, _, err = d2oracle.Create(g, tableReferences); err != nil {
 					return nil, fmt.Errorf("d2 oracle create: %w", err)
@@ -220,6 +250,26 @@ func alterTableStmt(schema *Schema, stmt *pgQuery.AlterTableStmt) error {
 
 		constraint, ok := node.AlterTableCmd.Def.Node.(*pgQuery.Node_Constraint)
 		if !ok {
+			continue
+		}
+
+		// Handle primary key constraints
+		if constraint.Constraint.Contype == pgQuery.ConstrType_CONSTR_PRIMARY {
+			// Get the primary key column names from Keys
+			for _, key := range constraint.Constraint.Keys {
+				node, ok := key.Node.(*pgQuery.Node_String_)
+				if !ok {
+					continue
+				}
+
+				// Find the column and add primary constraint
+				for _, col := range sourceTable.Columns {
+					if col.Name == node.String_.Sval {
+						col.Constraints = append(col.Constraints, "primary")
+						break
+					}
+				}
+			}
 			continue
 		}
 
@@ -361,4 +411,34 @@ func generateColumnProperties(columnDefinition *pgQuery.ColumnDef) *Column {
 	}
 
 	return column
+}
+
+// formatColumnName formats a column name with markers for display in the diagram
+func formatColumnName(column *Column) string {
+	// Build markers for the column name
+	markers := []string{}
+	if contains(column.Constraints, "primary") {
+		markers = append(markers, "PK")
+	}
+	if len(column.ForeignKeyReferences) > 0 {
+		markers = append(markers, "FK")
+	}
+
+	// Format: column_name (markers)
+	result := column.Name
+	if len(markers) > 0 {
+		result += fmt.Sprintf(" (%s)", strings.Join(markers, ", "))
+	}
+
+	return result
+}
+
+// contains checks if a slice contains a string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
