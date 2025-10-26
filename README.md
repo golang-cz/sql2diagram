@@ -13,7 +13,7 @@ make run-example
 ```
 
 ```bash
-go run . ./_example/schema.sql > ./_example/schema.svg
+go run github.com/golang-cz/sql2diagram/cmd/sql2diagram ./_example/schema.sql > ./_example/schema.svg
 ```
 
 ![Database Schema](./_example/schema.svg)
