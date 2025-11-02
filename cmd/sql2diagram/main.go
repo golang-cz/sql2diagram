@@ -151,22 +151,6 @@ func transformGraph(schema *Schema, g *d2graph.Graph) (*d2graph.Graph, error) {
 		}
 
 		for _, column := range table.Columns {
-			// Use plain column name for D2 key
-			columnName := column.Name
-
-			// Set sql_table constraint for PK/FK so it renders in the rightmost cell
-			var constraint string
-			if contains(column.Constraints, "primary") {
-				constraint = "primary_key"
-			} else if len(column.ForeignKeyReferences) > 0 {
-				constraint = "foreign_key"
-			}
-			if constraint != "" {
-				if _, err = d2oracle.Set(g, fmt.Sprintf("%s.%s.constraint", table.Name, columnName), nil, &constraint); err != nil {
-					return nil, fmt.Errorf("d2 set constraint: %w", err)
-				}
-			}
-
 			// Use type as the value, add NULL if column can be null
 			columnType := column.Type
 			if column.Length > 0 {
@@ -178,7 +162,15 @@ func transformGraph(schema *Schema, g *d2graph.Graph) (*d2graph.Graph, error) {
 				columnType += " NULL"
 			}
 
-			if _, err = d2oracle.Set(g, fmt.Sprintf("%s.%s", table.Name, columnName), nil, &columnType); err != nil {
+			if contains(column.Constraints, "primary") {
+				columnType = fmt.Sprintf("%s (PK)", columnType)
+			}
+
+			if len(column.ForeignKeyReferences) > 0 {
+				columnType = fmt.Sprintf("%s (FK)", columnType)
+			}
+
+			if _, err = d2oracle.Set(g, fmt.Sprintf("%s.%s", table.Name, column.Name), nil, &columnType); err != nil {
 				return nil, fmt.Errorf("d2 set: %w", err)
 			}
 
@@ -203,7 +195,7 @@ func transformGraph(schema *Schema, g *d2graph.Graph) (*d2graph.Graph, error) {
 				tableReferences := fmt.Sprintf(
 					"%s.%s -> %s.%s",
 					table.Name,
-					columnName,
+					column.Name,
 					foreignReference.Table,
 					referencedColumnName,
 				)
