@@ -21,13 +21,18 @@ func Render(ctx context.Context, schemaDef *schema.Schema) ([]byte, error) {
 		return nil, fmt.Errorf("d2 compile: %w", err)
 	}
 
-	graph, err = transformGraph(schemaDef, graph)
+	graph, selfRefEdges, err := transformGraph(schemaDef, graph)
 	if err != nil {
 		return nil, fmt.Errorf("transform graph: %w", err)
 	}
 
 	// direction: up makes dagre place FK targets (parent tables) at the top.
+	// Self-referential FK edges cannot be created via d2oracle.Create (it nests
+	// them as table.(a -> b)); append them as script lines after Format.
 	script := "direction: up\n" + d2format.Format(graph.AST)
+	if len(selfRefEdges) > 0 {
+		script += "\n" + strings.Join(selfRefEdges, "\n") + "\n"
+	}
 
 	ruler, err := textmeasure.NewRuler()
 	if err != nil {
@@ -50,16 +55,18 @@ func Render(ctx context.Context, schemaDef *schema.Schema) ([]byte, error) {
 	return postProcessSVG(out), nil
 }
 
-func transformGraph(schemaDef *schema.Schema, g *d2graph.Graph) (*d2graph.Graph, error) {
+func transformGraph(schemaDef *schema.Schema, g *d2graph.Graph) (*d2graph.Graph, []string, error) {
+	var selfRefEdges []string
+
 	for _, table := range schemaDef.Tables {
 		_, newKey, err := d2oracle.Create(g, table.Name)
 		if err != nil {
-			return nil, fmt.Errorf("d2 oracle create: %w", err)
+			return nil, nil, fmt.Errorf("d2 oracle create: %w", err)
 		}
 
 		shape := "sql_table"
 		if _, err = d2oracle.Set(g, fmt.Sprintf("%s.shape", newKey), nil, &shape); err != nil {
-			return nil, fmt.Errorf("d2 oracle create: %w", err)
+			return nil, nil, fmt.Errorf("d2 oracle create: %w", err)
 		}
 
 		for _, column := range table.Columns {
@@ -83,13 +90,17 @@ func transformGraph(schemaDef *schema.Schema, g *d2graph.Graph) (*d2graph.Graph,
 			}
 
 			if _, err = d2oracle.Set(g, fmt.Sprintf("%s.%s", table.Name, column.Name), nil, &columnType); err != nil {
-				return nil, fmt.Errorf("d2 set: %w", err)
+				return nil, nil, fmt.Errorf("d2 set: %w", err)
 			}
 
 			for _, fk := range column.ForeignKeyReferences {
 				ref := fmt.Sprintf("%s.%s -> %s.%s", table.Name, column.Name, fk.Table, fk.Column)
+				if fk.Table == table.Name {
+					selfRefEdges = append(selfRefEdges, ref)
+					continue
+				}
 				if _, _, err = d2oracle.Create(g, ref); err != nil {
-					return nil, fmt.Errorf("d2 oracle create: %w", err)
+					return nil, nil, fmt.Errorf("d2 oracle create: %w", err)
 				}
 			}
 		}
@@ -99,10 +110,10 @@ func transformGraph(schemaDef *schema.Schema, g *d2graph.Graph) (*d2graph.Graph,
 			rowType := "(UNIQUE)"
 
 			if _, err = d2oracle.Set(g, fmt.Sprintf("%s.%s", table.Name, rowName), nil, &rowType); err != nil {
-				return nil, fmt.Errorf("d2 set unique constraint: %w", err)
+				return nil, nil, fmt.Errorf("d2 set unique constraint: %w", err)
 			}
 		}
 	}
 
-	return g, nil
+	return g, selfRefEdges, nil
 }
