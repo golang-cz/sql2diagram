@@ -52,6 +52,8 @@ func Render(ctx context.Context, schemaDef *schema.Schema) ([]byte, error) {
 		return nil, fmt.Errorf("d2 render to svg: %w", err)
 	}
 
+	out = stripEmbeddedFonts(out)
+
 	return postProcessSVG(out), nil
 }
 

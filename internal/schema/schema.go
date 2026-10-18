@@ -49,7 +49,11 @@ func astTreeToSchema(tree *pgQuery.ParseResult) (*Schema, error) {
 	for _, stmt := range tree.Stmts {
 		switch node := stmt.Stmt.Node.(type) {
 		case *pgQuery.Node_CreateStmt:
-			schema.Tables = append(schema.Tables, toTable(node))
+			table, err := toTable(node)
+			if err != nil {
+				return nil, err
+			}
+			schema.Tables = append(schema.Tables, table)
 		case *pgQuery.Node_AlterTableStmt:
 			if err := alterTableStmt(schema, node.AlterTableStmt); err != nil {
 				return nil, fmt.Errorf("handle alter table stmt: %w", err)
@@ -89,16 +93,20 @@ func alterTableStmt(schema *Schema, stmt *pgQuery.AlterTableStmt) error {
 		case pgQuery.ConstrType_CONSTR_UNIQUE:
 			sourceTable.addUniqueConstraint(cols)
 		case pgQuery.ConstrType_CONSTR_FOREIGN:
-			fk := &ForeignReference{Table: constraint.Constraint.Pktable.Relname}
-			for _, pkattr := range constraint.Constraint.PkAttrs {
-				if n, ok := pkattr.Node.(*pgQuery.Node_String_); ok {
-					fk.Column = n.String_.Sval
-				}
+			fkCols := constraintColumns(constraint.Constraint.FkAttrs)
+			pkCols := constraintColumns(constraint.Constraint.PkAttrs)
+			if len(fkCols) == 0 || len(fkCols) != len(pkCols) {
+				return fmt.Errorf("invalid foreign key constraint %q: expected %d foreign key column(s), got %d", constraint.Constraint.Conname, len(pkCols), len(fkCols))
 			}
-			for _, name := range constraintColumns(constraint.Constraint.FkAttrs) {
-				if col := sourceTable.findColumn(name); col != nil {
-					col.ForeignKeyReferences = append(col.ForeignKeyReferences, fk)
+			for i, name := range fkCols {
+				col := sourceTable.findColumn(name)
+				if col == nil {
+					continue
 				}
+				col.addReference(&ForeignReference{
+					Table:  constraint.Constraint.Pktable.Relname,
+					Column: pkCols[i],
+				})
 			}
 		}
 	}
@@ -106,13 +114,17 @@ func alterTableStmt(schema *Schema, stmt *pgQuery.AlterTableStmt) error {
 	return nil
 }
 
-func toTable(stmt *pgQuery.Node_CreateStmt) *Table {
+func toTable(stmt *pgQuery.Node_CreateStmt) (*Table, error) {
 	table := &Table{Name: stmt.CreateStmt.Relation.Relname}
 	var pendingUniques [][]string
 
 	for _, columnNode := range stmt.CreateStmt.TableElts {
 		if colDef, ok := columnNode.Node.(*pgQuery.Node_ColumnDef); ok {
-			table.Columns = append(table.Columns, generateColumnProperties(colDef.ColumnDef))
+			column, err := generateColumnProperties(colDef.ColumnDef)
+			if err != nil {
+				return nil, err
+			}
+			table.Columns = append(table.Columns, column)
 			continue
 		}
 
@@ -127,10 +139,10 @@ func toTable(stmt *pgQuery.Node_CreateStmt) *Table {
 		table.addUniqueConstraint(cols)
 	}
 
-	return table
+	return table, nil
 }
 
-func generateColumnProperties(columnDefinition *pgQuery.ColumnDef) *Column {
+func generateColumnProperties(columnDefinition *pgQuery.ColumnDef) (*Column, error) {
 	column := &Column{Name: columnDefinition.Colname}
 
 	for _, node := range columnDefinition.TypeName.Names {
@@ -169,12 +181,14 @@ func generateColumnProperties(columnDefinition *pgQuery.ColumnDef) *Column {
 			case pgQuery.ConstrType_CONSTR_NOTNULL:
 				column.Constraints.Add("not null")
 			case pgQuery.ConstrType_CONSTR_FOREIGN:
-				column.addForeignKey(nodeConstraint.Constraint)
+				if err := column.addForeignKey(nodeConstraint.Constraint); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
 
-	return column
+	return column, nil
 }
 
 func (s *Schema) findTable(name string) *Table {
@@ -205,17 +219,26 @@ func (t *Table) addUniqueConstraint(columns []string) {
 	}
 }
 
-func (c *Column) addForeignKey(con *pgQuery.Constraint) {
+func (c *Column) addForeignKey(con *pgQuery.Constraint) error {
+	if len(con.PkAttrs) > 1 {
+		return fmt.Errorf("invalid column-level foreign key on column %q: expected 1 referenced column, got %d", c.Name, len(con.PkAttrs))
+	}
 	fk := &ForeignReference{Table: con.Pktable.Relname}
 	for _, pkattr := range con.PkAttrs {
 		if n, ok := pkattr.Node.(*pgQuery.Node_String_); ok {
 			fk.Column = n.String_.Sval
 		}
 	}
+	c.addReference(fk)
+	return nil
+}
+
+// addReference appends ref unless the column already holds an identical {Table, Column} reference.
+func (c *Column) addReference(ref *ForeignReference) {
 	if !slices.ContainsFunc(c.ForeignKeyReferences, func(r *ForeignReference) bool {
-		return r.Table == fk.Table && r.Column == fk.Column
+		return r.Table == ref.Table && r.Column == ref.Column
 	}) {
-		c.ForeignKeyReferences = append(c.ForeignKeyReferences, fk)
+		c.ForeignKeyReferences = append(c.ForeignKeyReferences, ref)
 	}
 }
 
